@@ -1,6 +1,7 @@
 ﻿using StereoKit;
 using System.Collections.Generic;
 
+
 namespace RDR
 {
 	interface IDrawable<T>
@@ -31,9 +32,13 @@ namespace RDR
         }
 		public bool Draw()
         {
+			bool isSelectedNow = false;
 			UI.WindowBegin(info.name, ref pose, Vec2.Zero, UIWin.Empty);
 			//start at center and auto expand in all directions
-			UI.Toggle(info.name, ref isSelected);
+			if (UI.Toggle(info.name, ref isSelected))
+            {
+				isSelectedNow = isSelected;
+            }
 
 			// display predicates of type uid for this type
 
@@ -62,7 +67,7 @@ namespace RDR
 
 				}
 			}
-			return isSelected;
+			return isSelectedNow;
 
 		}
 

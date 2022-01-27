@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Collections.Generic;
+using GraphQLParser;
+using GraphQLParser.AST;
 
 namespace RDR
 {
@@ -35,7 +37,9 @@ namespace RDR
     public class Field
     {
         public string name { get; set; }
-        public FieldType type { get; set; }
+        public string predicateName { get; set; }
+        public string type { get; set; }
+
         public bool isRelation { get; set; }
         public bool isIgnored { get; set; }
         public Predicate predicate { get; set; }
@@ -44,7 +48,8 @@ namespace RDR
     public class TypeElement
     {
         public string name { get; set; }
-        public Field[] fields { get; set; }
+        
+        public List<Field> fields { get; set; }
         public int relationCount { get; set; }
 
     }
@@ -80,10 +85,10 @@ namespace RDR
     {
         private static HttpClient client = new HttpClient();
         private static Dictionary<string, TypeElement> NodeTypeMap = new Dictionary<string, TypeElement>();
-        public static async Task<List<Node>> DQL(String query)
+        public static async Task<JsonNode> BasicDQL(String query)
         {
 
-            List<Node> nodeList = new List<Node>();
+
             var data = new StringContent(query, Encoding.UTF8, "application/dql");
             // var request = new RestRequest("query").AddBody(body);
             // var response = await _client.PostAsync(request);
@@ -93,6 +98,15 @@ namespace RDR
             string jsonString = response.Content.ReadAsStringAsync().Result;
             //DQLResponse resp = JsonSerializer.Deserialize<DQLResponse>(jsonString);
             JsonNode resp = JsonNode.Parse(jsonString);
+            return resp;
+        }
+           
+        public static async Task<List<Node>> DQL(String query)
+        {
+
+            List<Node> nodeList = new List<Node>();
+            
+            JsonNode resp = await BasicDQL(query);
             if (resp["data"] != null)
             {
                 foreach (JsonNode o in resp["data"]["result"].AsArray())
@@ -171,7 +185,7 @@ namespace RDR
         public static async Task<Dictionary<string, Predicate>> GetPredicateSchema()
         {
 
-
+            Console.Write("get predicates ...");
             var data = new StringContent("schema{}", Encoding.UTF8, "application/dql");
             // var request = new RestRequest("query").AddBody(body);
             // var response = await _client.PostAsync(request);
@@ -184,93 +198,86 @@ namespace RDR
             foreach (Predicate p in resp.data.schema)
             {
                 predicateMap.Add(p.predicate, p);
-                Console.WriteLine("Graph predicate " + p.predicate);
+                
             }
-
+            Console.WriteLine("Done");
             return predicateMap;
         }
         public static async Task<Dictionary<string, TypeElement>> GetSchema()
         {
+            Console.WriteLine("get schema");
             Dictionary<string, Predicate> predicateMap = await GetPredicateSchema();
             // List<TypeElement> typeList = new List<TypeElement>();
 
-
-            var data = new StringContent("{__schema{types { name fields { name type{name kind ofType{name kind} }} }} }", Encoding.UTF8, "application/graphql");
-            // var request = new RestRequest("query").AddBody(body);
-            // var response = await _client.PostAsync(request);
-            // var result = response.Content;
-            var response = await client.PostAsync("https://play.dgraph.io/graphql", data);
-            string jsonString = response.Content.ReadAsStringAsync().Result;
-            SchemaResponse resp = JsonSerializer.Deserialize<SchemaResponse>(jsonString);
-            foreach (TypeElement t in resp.data.__schema.types)
+            JsonNode resp = await BasicDQL("{ result(func:has(dgraph.graphql.schema), first:1) { dgraph.graphql.schema }}");
+          
+            if (resp["data"] != null)
             {
-                if (t.name.StartsWith("dgraph")
-                    || t.name.StartsWith("Query")
-                    || t.name.StartsWith("__")
-                    || t.name.EndsWith("Payload")
-                    || t.name.EndsWith("Filter")
-                    || t.name.EndsWith("Orderable")
-                    || t.name.EndsWith("Input")
-                    || t.name.EndsWith("Result")
-                    || t.name.EndsWith("Orderable")
-                    || t.name.EndsWith("Order")
-                    || t.name.EndsWith("Ref")
-                    || t.name.EndsWith("Patch")
-                    )
-                {
-                    // ignore those internal types
-                }
-                else
-                {
-                    t.relationCount = 0;
-                    //typeList.Add(t);
-                    //typeMap.Add(t.name, t);
-                    foreach (Field f in t.fields)
+                JsonNode info = resp["data"]["result"].AsArray()[0];
+                String schema = info["dgraph.graphql.schema"].AsValue().ToString();
+                GraphQLDocument doc = Parser.Parse(schema);
+                foreach(ASTNode n in doc.Definitions) {
+                    if (n.Kind == ASTNodeKind.ObjectTypeDefinition)
                     {
-                        if ((f.type.name == null) && (f.type.ofType.name != "ID"))
-                        {
-                            // workaround for Film DB error
-                            if (t.name == "Performance")
-                            {
-                                if (f.name == "films")
-                                {
-                                    f.name = "performance.film";
 
-                                }
-                                else
-                                {
-                                    f.name = "performance." + f.name;
-                                } 
-                            }
-                            // end of workaround
-                            f.isRelation = true;
-                            f.isIgnored = false;
-                            t.relationCount++;
-                        }
-                        else
+                        var def = n as GraphQLObjectTypeDefinition;
+                        var name = def.Name.Value.ToString();
+                        TypeElement typeElement = new TypeElement();
+                        typeElement.name = name;
+                        typeElement.fields = new List<Field>();
+                        int relationCount = 0; // fields that are Object
+
+                        foreach(GraphQLFieldDefinition f in def.Fields)
                         {
                             
-                            if (predicateMap.ContainsKey(f.name))
+                            if ((f.Type.Kind == ASTNodeKind.ListType) || (f.Type.Kind == ASTNodeKind.NamedType))
                             {
-                                f.predicate = predicateMap[f.name];
-                                f.isIgnored = false;
+                                Field field = new Field();
+
+                                String fieldName = f.Name.Value.ToString();
+                                field.name = fieldName;
+                                if (f.Type.Kind == ASTNodeKind.ListType)
+                                {
+                                    field.isRelation = true;
+                                    relationCount++;
+                                    GraphQLListType tt = f.Type as GraphQLListType;
+                                    field.type = (tt.Type as GraphQLNamedType).Name.Value.ToString();
+                                } else
+                                {
+                                    field.isRelation = false;
+                                    GraphQLNamedType nt = f.Type as GraphQLNamedType;
+                                    field.type = nt.Name.Value.ToString();
+                                }
+                                foreach(GraphQLDirective directive in f.Directives)
+                                {
+                                    if (directive.Name.Value.ToString() == "dgraph")
+                                    {
+                                        field.predicateName = (directive.Arguments[0].Value as GraphQLScalarValue).Value.ToString();
+                                        if (predicateMap.ContainsKey(field.predicateName))
+                                        {
+                                            field.predicate = predicateMap[field.predicateName];
+                                        }
+                                    }
+                                }
+                                if (field.predicateName == null) { field.predicateName = fieldName; }
+                                
+                                
+                                typeElement.fields.Add(field);
+
                             }
-                            else
-                            {
-                                f.isIgnored = true;
-                                Console.WriteLine("predicate not found " + f.name);
-                            }
+
+
                         }
-
+                        typeElement.relationCount = relationCount;
+                        NodeTypeMap.Add(name, typeElement);
+                   
                     }
-                    NodeTypeMap.Add(t.name, t);
-
-
                 }
 
+                
             }
-            Console.WriteLine("Graph response " + jsonString);
-            //
+
+            
 
             return NodeTypeMap;
 
@@ -291,9 +298,15 @@ namespace RDR
                 {
                     if (f.isRelation)
                     {
-                        query += $" {f.name} {{";
+                        if (f.name != f.predicateName)
+                        {
+                            query += $" {f.name}:{f.predicateName} {{";
+                        } else
+                        {
+                            query += $" {f.name} {{";
+                        }
                         //add all scalar fields 
-                        query += GetScalarFields(f.type.ofType.name);
+                        query += GetScalarFields(f.type);
                         query += "}";
                     }
                 }
@@ -318,11 +331,19 @@ namespace RDR
                     {
                         if ((f.predicate != null) && (f.predicate.lang == true))
                         {
-                            fields += $" {f.name}@en";
+                            fields += $" {f.predicateName}@en";
                         }
                         else
                         {
-                            fields += $" {f.name}";
+                            if (f.name != f.predicateName)
+                            {
+                                fields += $" {f.name}:{f.predicateName}"; 
+                            }
+                            else
+                            {
+                                fields += $" {f.name}";
+                            }
+                            
                         }
                     }
 
