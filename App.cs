@@ -7,6 +7,7 @@ using RDR;
 
 namespace StereoKitApp
 {
+
 	public class App
 	{
 		public SKSettings Settings => new SKSettings { 
@@ -22,7 +23,8 @@ namespace StereoKitApp
 		private Pose windowAdminPose;
 		private Sprite powerSprite;
 		private Material targetMaterial, seenMaterial, selectedMaterial, earthMaterial;
-		private List<TypeElement> graphSchema;
+		private Dictionary<string, TypeElement> graphSchema;
+		private List<Node> nodeList;
 		private Vec3 initialPosition;
 		private string selectedType; 
 		public static System.Threading.SynchronizationContext MainThreadCtxt { get; private set; }
@@ -59,6 +61,7 @@ namespace StereoKitApp
 			UI.ColorScheme = uiColor;
 			
 			windowAdminPose = new Pose(-.2f, 0, -0.65f, Quat.LookAt(new Vec3(-.2f, 0, -0.65f), initialPosition, Vec3.Up));
+			objPose = new Pose(-.8f, 0.2f, -0.25f, Quat.LookAt(new Vec3(-.8f, 0.2f, -0.25f), initialPosition, Vec3.Up));
 		}
 
 		private Boolean displayAdminPanel()
@@ -93,8 +96,15 @@ namespace StereoKitApp
 			graphSchema = await Graphquery.GetSchema();
 			GraphUi.initSchema(graphSchema, initialPosition);
 
+			var query = Graphquery.BuildQuery("Performance");
+			nodeList = await Graphquery.DQL(query);
 		}
-		
+		private async void loadData(String query)
+        {
+			nodeList = await Graphquery.DQL(query);
+			
+
+        }
 
 		public void Step()
 		{
@@ -108,9 +118,11 @@ namespace StereoKitApp
 				if (selectedType != null)
                 {
 					Log.Warn("select "+selectedType);
-				}
-            
-			
+				    var query = Graphquery.BuildQuery(selectedType);
+				    loadData(query);
+			    }
+
+			GraphUi.displayNodeList(nodeList, objPose);
 
 
 			if (running == false )
