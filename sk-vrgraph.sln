@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30717.126
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32112.339
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "StereoKit_DotNet", "Platforms\StereoKit_DotNet\StereoKit_DotNet.csproj", "{2930BBFF-27E8-449A-A6F4-24642C573178}"
 EndProject
@@ -12,6 +12,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StereoKit_UWP", "Platforms\StereoKit_UWP\StereoKit_UWP.csproj", "{4F693D80-51B1-48F6-9752-509D8E2EDD97}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StereoKit_Android", "Platforms\StereoKit_Android\StereoKit_Android.csproj", "{D7E1E175-556B-45FE-8F03-67FFC9FA97D7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApp1", "..\ConsoleApp1\ConsoleApp1.csproj", "{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -79,6 +81,18 @@ Global
 		{D7E1E175-556B-45FE-8F03-67FFC9FA97D7}.Release|x64.ActiveCfg = Release|Any CPU
 		{D7E1E175-556B-45FE-8F03-67FFC9FA97D7}.Release|x64.Build.0 = Release|Any CPU
 		{D7E1E175-556B-45FE-8F03-67FFC9FA97D7}.Release|x64.Deploy.0 = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Debug|x64.Build.0 = Debug|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|ARM64.Build.0 = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|x64.ActiveCfg = Release|Any CPU
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -87,6 +101,7 @@ Global
 		{2930BBFF-27E8-449A-A6F4-24642C573178} = {22090651-387D-4E47-BF87-4B854DCE5DB1}
 		{4F693D80-51B1-48F6-9752-509D8E2EDD97} = {22090651-387D-4E47-BF87-4B854DCE5DB1}
 		{D7E1E175-556B-45FE-8F03-67FFC9FA97D7} = {22090651-387D-4E47-BF87-4B854DCE5DB1}
+		{E202FED9-2A0E-4D3C-834C-9EAD26D28E9B} = {22090651-387D-4E47-BF87-4B854DCE5DB1}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {7DB834FE-21C4-4AE7-B612-2D0EB7EF458F}

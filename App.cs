@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using StereoKit;
 using System.Numerics;
+using System.Threading.Tasks;
 using RDR;
+using RDR.Dgraph;
+using RDR.GraphUI;
 
 
 
@@ -18,7 +21,7 @@ namespace StereoKitApp
 		};
 
 		Pose objPose;
-		SmartSphere obj;
+	
 		Matrix4x4 floorTransform = Matrix.TS(new Vector3(0, -1.5f, 0), new Vector3(20, 0.1f, 20));
 		Material  floorMaterial;
 		private Pose windowAdminPose;
@@ -26,9 +29,13 @@ namespace StereoKitApp
 		private Material targetMaterial, seenMaterial, selectedMaterial, earthMaterial;
 		private Dictionary<string, TypeElement> graphSchema;
 		private List<Node> nodeList;
-		private Vec3 initialPosition;
-		private string selectedType; 
+		private Pose initialPose;
+		private string selectedType;
+		private static List<IDrawable> UINodeComponentList;
+		private static VshapeLayout layoutForNodes;
 		public static System.Threading.SynchronizationContext MainThreadCtxt { get; private set; }
+		private int page, pageSize, index;
+		private bool loading = false;
 		private void initSharedResources()
 		{
 			
@@ -60,9 +67,12 @@ namespace StereoKitApp
 			 Renderer.SkyLight = lighting;
 			Color uiColor = Color.HSV(.83f, 0.33f, 1f, 0.8f);
 			UI.ColorScheme = uiColor;
-			
-			windowAdminPose = new Pose(-.2f, 0, -0.65f, Quat.LookAt(new Vec3(-.2f, 0, -0.65f), initialPosition, Vec3.Up));
-			objPose = new Pose(-.8f, 0.2f, -0.25f, Quat.LookAt(new Vec3(-.8f, 0.2f, -0.25f), initialPosition, Vec3.Up));
+
+			initialPose = new Pose(Input.Head.position, Input.Head.orientation);
+
+			windowAdminPose = new Pose(-.2f, 0, -0.65f, Quat.LookAt(new Vec3(-.2f, 0, -0.65f), initialPose.position, Vec3.Up));
+			objPose = new Pose(-.8f, 0.2f, -0.25f, Quat.LookAt(new Vec3(-.8f, 0.2f, -0.25f), initialPose.position, Vec3.Up));
+			layoutForNodes = new VshapeLayout(objPose, 100, SKMath.Pi / 4.0f, 25 * U.cm);
 		}
 
 		private Boolean displayAdminPanel()
@@ -81,7 +91,7 @@ namespace StereoKitApp
 		}
 		public async void Init()
 		{
-			initialPosition = Input.Head.position;
+			
 			this.initSharedResources();
 			this.initUI();
 			Log.Subscribe(OnLog);
@@ -89,23 +99,32 @@ namespace StereoKitApp
 			
 			var pose = new Pose(0, 0, -1.0f, Quat.Identity);
 			
-
-			
 			floorMaterial = new Material(Shader.FromFile("floor.hlsl"));
 			floorMaterial.Transparency = Transparency.Blend;
 			MainThreadCtxt = new System.Threading.SynchronizationContext();
+			selectedType = "Performance";
+			loading = true;
 			graphSchema = await Graphquery.GetSchema();
-			GraphUi.initSchema(graphSchema, initialPosition);
-
-			var query = Graphquery.BuildQuery("Performance");
-			nodeList = await Graphquery.DQL(query);
-		}
-		private async void loadData(String query)
-        {
-			nodeList = await Graphquery.DQL(query);
+			GraphDisplayer.initSchema(graphSchema, initialPose);
+			pageSize = 2;
+			page = 0;
 			
-
-        }
+			var query = Graphquery.BuildQuery("Performance", page, pageSize);
+			index = -1;
+			await loadData(query,index);
+		}
+		private async Task loadData(String query, int i)
+        {
+			
+			nodeList = await Graphquery.DQL(query);
+			if (i == -1)
+			{
+				i = nodeList.Count / 2;
+			}
+			UINodeComponentList = GraphNodeUIcomponent.buildGraphNodeUIcomponentList(nodeList);
+			layoutForNodes.SetElementList(UINodeComponentList,i, page, pageSize);
+			loading = false;
+		}
 
 		public void Step()
 		{
@@ -114,16 +133,40 @@ namespace StereoKitApp
 
 			Boolean running = this.displayAdminPanel();
 			LogWindow();
-
-			selectedType = GraphUi.selectTypeInSchema();
-				if (selectedType != null)
+			
+			var selected = GraphDisplayer.selectTypeInSchema();
+			if (selected != null)
                 {
+				    selectedType = selected;
 					Log.Warn("select "+selectedType);
-				    var query = Graphquery.BuildQuery(selectedType);
-				    loadData(query);
+				    page = 0;
+				    index = -1;
+				    var query = Graphquery.BuildQuery(selectedType, page, pageSize);
+				    loadData(query,index);
 			    }
 
-			GraphUi.displayNodeList(nodeList, objPose);
+
+			LayoutStatus status = layoutForNodes.Draw();
+			if (loading == false)
+			{
+				if (status.index >= 3 * status.pageSize)
+				{
+					page += 1;
+					var query = Graphquery.BuildQuery(selectedType, page, pageSize);
+					index = status.index - pageSize;
+					loading = true;
+					loadData(query, index);
+				}
+				if ((status.index < status.pageSize) && (status.page > 0))
+				{
+					page -= 1;
+					var query = Graphquery.BuildQuery(selectedType, page, pageSize);
+					index = status.index + pageSize;
+					loading = true;
+					loadData(query, index);
+				}
+			}
+			//GraphDisplayer.displayNodeList(nodeList, objPose);
 
 
 			if (running == false )

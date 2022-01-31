@@ -9,77 +9,11 @@ using System.Text.Json.Nodes;
 using System.Collections.Generic;
 using GraphQLParser;
 using GraphQLParser.AST;
+using RDR.Dgraph;
 
 namespace RDR
 {
-    public class DQLData
-    {
-        public Object[] result { get; set; }
-    }
-    public class DQLResponse
-    {
-        public DQLData data { get; set; }
-    }
-    public class GraphQLRequest
-    {
-        public string query { get; set; }
-    }
-    public class SchemaElement
-    {
-        public TypeElement[] types { get; set; }
-    }
-    public class FieldType
-    {
-        public string name { get; set; }
-        public string kind { get; set; }
-        public FieldType ofType { get; set; }
-    }
-    public class Field
-    {
-        public string name { get; set; }
-        public string predicateName { get; set; }
-        public string type { get; set; }
-
-        public bool isRelation { get; set; }
-        public bool isIgnored { get; set; }
-        public Predicate predicate { get; set; }
-
-    }
-    public class TypeElement
-    {
-        public string name { get; set; }
-        
-        public List<Field> fields { get; set; }
-        public int relationCount { get; set; }
-
-    }
-    public class GraphSchema
-    {
-        public SchemaElement __schema { get; set; }
-
-
-    }
-    public class SchemaResponse
-    {
-        public GraphSchema data { get; set; }
-    }
-    public class PredicateResponse
-    {
-        public PrediateSchema data { get; set; }
-    }
-    public class PrediateSchema
-    {
-        public Predicate[] schema { get; set; }
-
-    }
-    public class Predicate
-    {
-        public string predicate { get; set; }
-        public string type { get; set; }
-        public bool list { get; set; }
-        public bool lang { get; set; }
-        public bool index { get; set; }
-    }
+   
 
     public static class Graphquery
     {
@@ -109,7 +43,7 @@ namespace RDR
             JsonNode resp = await BasicDQL(query);
             if (resp["data"] != null)
             {
-                foreach (JsonNode o in resp["data"]["result"].AsArray())
+                foreach (JsonNode o in resp["data"]["list"].AsArray())
                 {
 
                     JsonValue v = o["dgraph.type"].AsArray()[0].AsValue();
@@ -193,15 +127,8 @@ namespace RDR
             var response = await client.PostAsync("https://play.dgraph.io/query", data);
 
             string jsonString = response.Content.ReadAsStringAsync().Result;
-            PredicateResponse resp = JsonSerializer.Deserialize<PredicateResponse>(jsonString);
-            Dictionary<string, Predicate> predicateMap = new Dictionary<string, Predicate>();
-            foreach (Predicate p in resp.data.schema)
-            {
-                predicateMap.Add(p.predicate, p);
-                
-            }
-            Console.WriteLine("Done");
-            return predicateMap;
+            return Predicate.GetPredicateMap(jsonString);
+            
         }
         public static async Task<Dictionary<string, TypeElement>> GetSchema()
         {
@@ -215,66 +142,7 @@ namespace RDR
             {
                 JsonNode info = resp["data"]["result"].AsArray()[0];
                 String schema = info["dgraph.graphql.schema"].AsValue().ToString();
-                GraphQLDocument doc = Parser.Parse(schema);
-                foreach(ASTNode n in doc.Definitions) {
-                    if (n.Kind == ASTNodeKind.ObjectTypeDefinition)
-                    {
-
-                        var def = n as GraphQLObjectTypeDefinition;
-                        var name = def.Name.Value.ToString();
-                        TypeElement typeElement = new TypeElement();
-                        typeElement.name = name;
-                        typeElement.fields = new List<Field>();
-                        int relationCount = 0; // fields that are Object
-
-                        foreach(GraphQLFieldDefinition f in def.Fields)
-                        {
-                            
-                            if ((f.Type.Kind == ASTNodeKind.ListType) || (f.Type.Kind == ASTNodeKind.NamedType))
-                            {
-                                Field field = new Field();
-
-                                String fieldName = f.Name.Value.ToString();
-                                field.name = fieldName;
-                                if (f.Type.Kind == ASTNodeKind.ListType)
-                                {
-                                    field.isRelation = true;
-                                    relationCount++;
-                                    GraphQLListType tt = f.Type as GraphQLListType;
-                                    field.type = (tt.Type as GraphQLNamedType).Name.Value.ToString();
-                                } else
-                                {
-                                    field.isRelation = false;
-                                    GraphQLNamedType nt = f.Type as GraphQLNamedType;
-                                    field.type = nt.Name.Value.ToString();
-                                }
-                                foreach(GraphQLDirective directive in f.Directives)
-                                {
-                                    if (directive.Name.Value.ToString() == "dgraph")
-                                    {
-                                        field.predicateName = (directive.Arguments[0].Value as GraphQLScalarValue).Value.ToString();
-                                        if (predicateMap.ContainsKey(field.predicateName))
-                                        {
-                                            field.predicate = predicateMap[field.predicateName];
-                                        }
-                                    }
-                                }
-                                if (field.predicateName == null) { field.predicateName = fieldName; }
-                                
-                                
-                                typeElement.fields.Add(field);
-
-                            }
-
-
-                        }
-                        typeElement.relationCount = relationCount;
-                        NodeTypeMap.Add(name, typeElement);
-                   
-                    }
-                }
-
-                
+                NodeTypeMap = TypeElement.parseSchema(schema, predicateMap);
             }
 
             
@@ -282,39 +150,32 @@ namespace RDR
             return NodeTypeMap;
 
         }
-
-        public static String BuildQuery(String type)
+        public static String BuildQuery(String type, int page, int pageSize)
+        {
+            GraphIntent intent = new GraphIntent("Demo", type, 4 * pageSize, page * pageSize);
+            return intent.ToDQL(NodeTypeMap);
+        }
+        public static String BuildQueryOld(String type, int page, int pageSize)
         {
             String query = "";
             // return a DQL query 
             // implemented :
             // - get first 100 of the given type
+            int offset = page * pageSize;
+            int first = 4 * pageSize; // we read 4 pages 
             if (NodeTypeMap.ContainsKey(type))
             {
                 TypeElement t = NodeTypeMap[type];
-                query = $"{{result(func: eq(dgraph.type, \"{type}\"), first: 10) {{ ";
-                query += GetScalarFields(type);
-                foreach (var f in t.fields) // add all fields
-                {
-                    if (f.isRelation)
-                    {
-                        if (f.name != f.predicateName)
-                        {
-                            query += $" {f.name}:{f.predicateName} {{";
-                        } else
-                        {
-                            query += $" {f.name} {{";
-                        }
-                        //add all scalar fields 
-                        query += GetScalarFields(f.type);
-                        query += "}";
-                    }
-                }
+                query = $"{{list(func: eq(dgraph.type, \"{type}\"), first: {first}, offset: {offset}) {{ ";
+                query += t.GetDQLScalarFields();
+                query += t.GetDQLRelationInfo(NodeTypeMap);
                 query += "}}";
+                
 
             }
             return query;
         }
+        
 
         private static String GetScalarFields(String type)
         {

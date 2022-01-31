@@ -1,10 +1,9 @@
 ﻿
 
 using System;
-
-using System.Text;
-
 using System.Collections.Generic;
+
+// structures to represent instance of graph  : List of Nodes each nodes having attributes and relations
 
 namespace RDR
 {
