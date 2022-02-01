@@ -23,6 +23,24 @@ namespace RDR
     }
     public class EdgePath
     {
+        public string name { get; set; }
+        public List<AttributeCriteria> facets { get; set; }
+        public List<AttributeCriteria> nodecriteria { get; set; }
+
+        public EdgePath(string name)
+        {
+            facets = new List<AttributeCriteria>();
+            nodecriteria = new List<AttributeCriteria>();
+            this.name = name;
+        }
+        public void AddNodeCriteria(string attribute, string type, string function, string value)
+        {
+            nodecriteria.Add(new AttributeCriteria(attribute, type, function, value));
+        }
+        public void AddFacet(string attribute, string type, string function, string value)
+        {
+            facets.Add(new AttributeCriteria(attribute, type, function, value));
+        }
 
     }
     public class Summary
@@ -32,25 +50,39 @@ namespace RDR
     public class EntityConstraint
     {
         public string entityName { get; set; }
-        public List<AttributeCriteria> filters { get; set; }
+        public List<AttributeCriteria> nodecriteria { get; set; }
         public List<PathConstraint> musthavepath { get; set; }
         public EntityConstraint(string entityName)
         {
             this.entityName = entityName;
-            this.filters = new List<AttributeCriteria>();
+            this.nodecriteria = new List<AttributeCriteria>();
             this.musthavepath = new List<PathConstraint>();
         }
-        public void addFilter(string attribute, string type, string function, string value)
+        public void AddNodeCriteria(string attribute, string type, string function, string value)
         {
-            filters.Add(new AttributeCriteria(attribute, type, function, value));
+            nodecriteria.Add(new AttributeCriteria(attribute, type, function, value));
+        }
+        public void AddPathConstraint(PathConstraint path)
+        {
+            musthavepath.Add(path);
         }
     }
     public class PathConstraint
     {
         public int mincount { get; set; }
         public int maxcount { get; set; }
-        public EntityConstraint entity { get; set; }
         public List<EdgePath> edgepath {get; set;}
+
+        public PathConstraint(int min=-1, int max=-1)
+        {
+            edgepath = new List<EdgePath>();
+            this.mincount = min;
+            this.maxcount = max;
+        }
+        public void AddEdge(EdgePath edge)
+        {
+            edgepath.Add(edge);
+        }
        
 
     }
@@ -58,6 +90,89 @@ namespace RDR
     {
         public string entity { get; set; }
         public string groupByAttribute { get; set; }
+
+    }
+    /* 
+     * PathHelper is used to accumulate many PathConstraint in a unique body
+     * as PathConstraints may have common path part 
+     */
+    public class PathHelper
+    {
+        public Dictionary<string, PathHelper> pathmap;
+        public List<AttributeCriteria> facets { get; set; }
+        public List<AttributeCriteria> nodecriteria { get; set; }
+        public PathHelper()
+        {
+            facets = new List<AttributeCriteria>();
+            nodecriteria = new List<AttributeCriteria>();
+            pathmap = new Dictionary<string,PathHelper>();
+        }
+        public  void SetConstraint(EdgePath constraint)
+        {
+            
+            foreach (AttributeCriteria f in constraint.facets)
+            {
+                facets.Add(f);
+            }
+            foreach (AttributeCriteria c in constraint.nodecriteria)
+            {
+                nodecriteria.Add(c);
+            }
+            
+        }
+        public void AddPath(PathConstraint path, bool isGroupby = false)
+        {
+            if ((path.maxcount == -1) && ((path.mincount == -1) || (path.mincount == 1))) { // not a count condition
+                PathHelper current = this;
+                foreach( EdgePath e in path.edgepath)
+                {
+                    PathHelper ph;
+                    if (!current.pathmap.ContainsKey(e.name))
+                    {
+                        ph = new PathHelper();
+                        current.pathmap.Add(e.name,ph);
+                    } else
+                    {
+                        ph = current.pathmap[e.name];
+                    }
+                    ph.SetConstraint(e);
+                    current = current.pathmap[e.name];
+
+                }                                                                                      
+            }
+
+        }
+        public string ToDQL()
+        {
+            if (pathmap.Count == 0) { 
+                return "";
+            } else
+            {
+                string path = "";
+                foreach (string h in pathmap.Keys)
+                {
+                    string filter = "";
+                    if (pathmap[h].nodecriteria.Count > 0)
+                    {
+                        List<string> filters = new List<string>();
+                        foreach (AttributeCriteria c in pathmap[h].nodecriteria)
+                        {
+                            if (c.attributeName == "uid")
+                            {
+                                filters.Add($"uid(\"{c.value}\")");
+                            }
+                            else
+                            {
+                                filters.Add($"{c.func}({c.attributeName},\"{c.value}\")");
+                            }
+                        }
+                        filter = "@filter(" + string.Join(" and ", filters) + " )";
+                    }
+                    path += h+" "+filter+" { "+pathmap[h].ToDQL()+" }";
+                }
+                return path;
+            }
+        }
 
     }
     public class GraphIntent
@@ -75,10 +190,40 @@ namespace RDR
             this.offset = offset;
             this.first = first;
         }
+        
         public string ToDQL(Dictionary<string, TypeElement> NodeTypeMap )
         {
            string dql = $"{{f0 as var(func:eq(dgraph.type,\"{this.entity.entityName}\")) \n";
-           
+            // add filters
+            if (this.entity.nodecriteria.Count > 0) {
+                List<string> filters = new List<string>();
+                
+                foreach (AttributeCriteria item in this.entity.nodecriteria)
+                {
+                    if (item.attributeName == "uid")
+                    {
+                        dql = $"{{f0 as var(func:uid(\"{item.value}\")) \n";
+                        // uid attribute only supports eq operator
+                    }
+                    else
+                    {
+                        filters.Add($"{item.func}({item.attributeName},\"{item.value}\")");
+                    }
+                }
+                if (filters.Count > 0)
+                {
+                    string filterPart = string.Join(" and ", filters);
+                    dql += $"@filter ( {filterPart}) ";
+                }
+            }
+            // add all path 
+            PathHelper body = new PathHelper();
+            foreach( PathConstraint p in this.entity.musthavepath )
+            {
+                body.AddPath(p);
+            }
+            dql += "@cascade { " + body.ToDQL() + " }";
+            // create info to be returned for each node 
            string info = "";
             if (NodeTypeMap.ContainsKey(this.entity.entityName))
             {
