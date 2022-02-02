@@ -54,7 +54,16 @@ namespace RDR
 			Log.Warn("start lerping ");
 
 		}
-	public bool Draw()
+		public bool IsSelected()
+		{
+			return isSelected;
+		}
+		public bool SetSelected(bool v)
+		{
+			isSelected = v;
+			return this.isSelected;
+		}
+		public bool Draw()
         {
 			bool isSelectedNow = false;
 			Pose windowPose;
@@ -81,10 +90,21 @@ namespace RDR
 			{
 				UI.Label($"{a.name} : {a.value}",labelSize);
 			}
-			foreach (NodeRelation r in _node.relations)
-			{
-				UI.Label($"{r.predicate} -> {r.node.name}");
-			}
+			//foreach (NodeRelation r in _node.relations)
+			//{
+			//	UI.Label($"{r.predicate} -> {r.node.name}");
+			//}
+			foreach(String predicate in _node.edges.Keys)
+            {
+				List<Node> relations = _node.edges[predicate];
+				if (relations.Count == 1)
+                {
+					UI.Label($"{predicate} -> {relations[0].name}");
+				} else
+                {
+					UI.Label($"{predicate} -> {relations.Count}");
+				}
+            }
 			UI.WindowEnd();
 			
 			return isSelectedNow;

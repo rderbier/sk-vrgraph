@@ -45,6 +45,21 @@ namespace RDR
 			}
 			return UIcomponentList;
 		}
+		public static List<IDrawable> CreateGraphTypeUIElementList(List<TypeElement> list)
+		{
+			List<IDrawable> UIcomponentList = new List<IDrawable>();
+
+
+			Pose p = new Pose();
+			foreach (var typeElement in list)
+			{
+				
+				
+				UIcomponentList.Add(new GraphTypeUIcomponent(typeElement, p));
+
+			}
+			return UIcomponentList;
+		}
 	}
 	public class GraphTypeUIcomponent : IDrawable
     {
@@ -54,13 +69,23 @@ namespace RDR
 		public GraphTypeUIcomponent(TypeElement typeElement, Pose _pose)
         {
 			info = typeElement;
-			pose = _pose; 
+			pose = _pose;
+
 			
         }
 		public bool DrawAtPose(Pose newPose)
 		{
 			pose = newPose;
 			return Draw();
+		}
+		public bool IsSelected()
+        {
+			return isSelected;
+        }
+		public bool SetSelected(bool v)
+		{
+			isSelected = v;
+			return this.isSelected;
 		}
 		public Object GetValue()
         {

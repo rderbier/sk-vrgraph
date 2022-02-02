@@ -13,6 +13,8 @@ namespace RDR.GraphUI
 		public int page;
 		public int pageSize;
 		public int index;
+		public bool isSelected;
+		public IDrawable selected;
     }
 	public interface IDrawable
 	{
@@ -20,6 +22,8 @@ namespace RDR.GraphUI
 		bool Draw();
 		void LerpTo(Pose toPose, float duration);
 		Object GetValue();
+		bool IsSelected();
+		bool SetSelected(bool selected);
 	}
 	public interface ILayout
 	{

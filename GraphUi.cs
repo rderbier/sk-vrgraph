@@ -23,7 +23,7 @@ namespace RDR.GraphUI
 			List<TypeElement> graphSchema = new List<TypeElement>(NodeTypeMap.Values);
 			initialPosition = pose.position;
 			
-			filtered = graphSchema.FindAll(e => e.relationCount >= 2);
+			filtered = graphSchema.FindAll(e => e.nature == NodeNature.Thing);
 			UIcomponentList = GraphTypeUtils.CreateGraphTypeUIElementList(filtered, pose.position, armDistance);
 
 			
@@ -31,7 +31,20 @@ namespace RDR.GraphUI
 
 		}
 	
-		
+		static public void displayTypeInfo( TypeElement nodeType, Pose pose)
+        {
+			// !! name must be different from type displayed in type selector !!!
+			UI.WindowBegin("-"+nodeType.name+"-", ref pose, Vec2.Zero, UIWin.Normal);
+			foreach ( Field f in nodeType.fields)
+            {
+				if (f.isRelation)
+                {
+					UI.Label($"{f.name} (${f.type})");
+                }
+            }
+			UI.WindowEnd();
+
+		}
 		static public string selectTypeInSchema()
 		{
 			string selected = null;

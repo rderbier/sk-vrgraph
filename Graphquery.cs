@@ -98,6 +98,8 @@ namespace RDR
                                     String ruid = relatedNode["uid"].AsValue().ToString();
                                     JsonValue v = relatedNode["dgraph.type"].AsArray()[0].AsValue();
                                     String relatedNodeType = v.ToString();
+                                    node.AddRelation(f.name, nodeFromJson(relatedNodeType, ruid, relatedNode));
+
                                     node.relations.Add(new NodeRelation(f.name, nodeFromJson(relatedNodeType, ruid, relatedNode)));
                                 }
                             }

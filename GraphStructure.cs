@@ -34,6 +34,7 @@ namespace RDR
         public string uid { get; set; }
         public string name { get; set; } // euristic define a name for nodes if possible.
         public List<NodeScalarAttribute> attributes { get; set; }
+        public Dictionary<string, List<Node>> edges { get; set; }
         public List<NodeRelation> relations { get; set; }
 
         public  Node(String _type, String _uid)
@@ -42,6 +43,16 @@ namespace RDR
             uid = _uid;
             attributes = new List<NodeScalarAttribute>();
             relations = new List<NodeRelation>();
+            edges = new Dictionary<string, List<Node>>();
+        }
+        public void AddRelation(String predicate, Node n)
+        {
+            if (!edges.ContainsKey(predicate))
+            {
+                edges.Add(predicate, new List<Node>());
+            }
+            edges[predicate].Add(n);
+
         }
 
     }

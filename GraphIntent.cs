@@ -23,15 +23,17 @@ namespace RDR
     }
     public class EdgePath
     {
-        public string name { get; set; }
+        public string name { get; set; } // name of the edge ie the relation predicate
+        public string entityName { get; set; }
         public List<AttributeCriteria> facets { get; set; }
         public List<AttributeCriteria> nodecriteria { get; set; }
 
-        public EdgePath(string name)
+        public EdgePath(string name, string entityName=null)
         {
             facets = new List<AttributeCriteria>();
             nodecriteria = new List<AttributeCriteria>();
             this.name = name;
+            this.entityName = entityName;
         }
         public void AddNodeCriteria(string attribute, string type, string function, string value)
         {
@@ -50,6 +52,7 @@ namespace RDR
     public class EntityConstraint
     {
         public string entityName { get; set; }
+        
         public List<AttributeCriteria> nodecriteria { get; set; }
         public List<PathConstraint> musthavepath { get; set; }
         public EntityConstraint(string entityName)
@@ -72,6 +75,7 @@ namespace RDR
         public int mincount { get; set; }
         public int maxcount { get; set; }
         public List<EdgePath> edgepath {get; set;}
+        public string countEntity;
 
         public PathConstraint(int min=-1, int max=-1)
         {
@@ -82,6 +86,10 @@ namespace RDR
         public void AddEdge(EdgePath edge)
         {
             edgepath.Add(edge);
+            if (mincount > 0)
+            {
+                countEntity = edge.entityName;
+            }
         }
        
 
@@ -101,6 +109,8 @@ namespace RDR
         public Dictionary<string, PathHelper> pathmap;
         public List<AttributeCriteria> facets { get; set; }
         public List<AttributeCriteria> nodecriteria { get; set; }
+        public string countVariable;
+        public string counted;
         public PathHelper()
         {
             facets = new List<AttributeCriteria>();
@@ -139,16 +149,77 @@ namespace RDR
                     current = current.pathmap[e.name];
 
                 }                                                                                      
+            } else {  // adding a count path constraint
+                PathHelper current = this;
+                string targetEntityName = path.edgepath[path.edgepath.Count - 1].entityName;
+                // targetEntityName is the where the complete path is going !
+                string counterName = $"count_{targetEntityName}";
+                current.countVariable = counterName;
+               
+                current.counted = $"sum(val({counterName}0))";
+                // we use counter counter0 counter1 ... as we go deeper in the path 
+
+                for (int i = 0; i < path.edgepath.Count; i++)
+                {
+                    EdgePath e = path.edgepath[i];
+                    // create a PathHelper but don't add it to the chain
+                    PathHelper ph;
+                    if (!current.pathmap.ContainsKey(e.name))
+                    {
+                        ph = new PathHelper();
+                    }
+                    else
+                    {
+                        ph = current.pathmap[e.name];
+                    }
+                    bool addNext = true;
+                    
+                    if (i == path.edgepath.Count - 1) { //last one
+                        if ((e.nodecriteria.Count == 0) && (e.facets.Count == 0)) // no need to add this level
+                        {
+                            addNext = false;
+                            if (i == 0)
+                            {
+                                current.countVariable = $"{counterName}";
+                                current.counted = $"count({e.name})";
+                            }
+                            else
+                            {
+                                current.countVariable = $"{counterName}{i-1}";
+                                current.counted= $"count({e.name})";
+                            }
+                        }
+                        else
+                        {
+                            ph.countVariable = $"{counterName}{i}";
+                            ph.counted = "Math(1)";
+                        }
+                    } else {
+                        ph.countVariable = $"{counterName}{i}";
+                        ph.counted = $"sum(val({counterName}{i+1}))";
+                        
+                    }
+                    // add next pathHelper if needed
+                    if (addNext)
+                    {
+                        ph.SetConstraint(e);
+                        if (!current.pathmap.ContainsKey(e.name))
+                        {
+                            current.pathmap.Add(e.name, ph);
+                        }
+                        current = current.pathmap[e.name];
+                    }
+
+                }
             }
 
         }
         public string ToDQL()
         {
-            if (pathmap.Count == 0) { 
-                return "";
-            } else
+            string body = "";
+            if (pathmap.Count != 0)
             {
-                string path = "";
+                
                 foreach (string h in pathmap.Keys)
                 {
                     string filter = "";
@@ -168,10 +239,15 @@ namespace RDR
                         }
                         filter = "@filter(" + string.Join(" and ", filters) + " )";
                     }
-                    path += h+" "+filter+" { "+pathmap[h].ToDQL()+" }";
+                    body += h +" "+filter+" { "+pathmap[h].ToDQL()+" }";
                 }
-                return path;
+                
             }
+            if (countVariable != null)
+            {
+                body += $"{countVariable} as {counted}";
+            }
+            return body;
         }
 
     }
@@ -218,9 +294,20 @@ namespace RDR
             }
             // add all path 
             PathHelper body = new PathHelper();
+            List<string> countfilter = new List<string>();
             foreach( PathConstraint p in this.entity.musthavepath )
             {
                 body.AddPath(p);
+                // create filtering condition if needed
+                if (p.mincount > 0)
+                {
+                    countfilter.Add($"ge(val(count_{p.countEntity}),{p.mincount})");
+                }
+            }
+            string countfilterString = "";
+            if (countfilter.Count > 0)
+            {
+                countfilterString = "@filter(" + string.Join(" and ", countfilter) + ") ";
             }
             dql += "@cascade { " + body.ToDQL() + " }";
             // create info to be returned for each node 
@@ -231,7 +318,7 @@ namespace RDR
                 info += NodeTypeMap[this.entity.entityName].GetDQLRelationInfo(NodeTypeMap);
             }
 
-            dql += $" stat(func:uid(f0)) {{ count(uid) }} \n list(func:uid(f0), first:{this.first}, offset:{this.offset}) {{ {info} }}";
+            dql += $" stat(func:uid(f0)) {countfilterString} {{ count(uid) }} \n list(func:uid(f0), first:{this.first}, offset:{this.offset}) {countfilterString} {{ {info} }}";
             dql += "\n}";
             return dql;
 

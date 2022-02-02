@@ -40,12 +40,25 @@ namespace RDR.Dgraph
         public Predicate predicate { get; set; }
 
     }
+    public enum NodeNature
+    {
+        Thing,
+        Characteristic,
+        Association
+    }
     public class TypeElement
     {
+       
         public string name { get; set; }
 
         public List<Field> fields { get; set; }
         public int relationCount { get; set; }
+        public NodeNature nature { get; set; }
+        public TypeElement(string name)
+        {
+            this.name = name;
+            this.fields = new List<Field>();
+        }
         public String GetDQLScalarFields()
         {
             String fields = " dgraph.type uid";
@@ -114,11 +127,11 @@ namespace RDR.Dgraph
 
                     var def = n as GraphQLObjectTypeDefinition;
                     var name = def.Name.Value.ToString();
-                    TypeElement typeElement = new TypeElement();
-                    typeElement.name = name;
-                    typeElement.fields = new List<Field>();
+                    TypeElement typeElement = new TypeElement(name);
+                    
                     int relationCount = 0; // fields that are Object
-
+                    int reverseCount = 0;
+                    int scalarCount = 0; // fields that are scalar, excluding uid
                     foreach (GraphQLFieldDefinition f in def.Fields)
                     {
 
@@ -140,12 +153,16 @@ namespace RDR.Dgraph
                                 field.isRelation = false;
                                 GraphQLNamedType nt = f.Type as GraphQLNamedType;
                                 field.type = nt.Name.Value.ToString();
+                                scalarCount += 1;
                             }
                             foreach (GraphQLDirective directive in f.Directives)
                             {
                                 if (directive.Name.Value.ToString() == "dgraph")
                                 {
                                     field.predicateName = (directive.Arguments[0].Value as GraphQLScalarValue).Value.ToString();
+                                    if (field.predicateName.StartsWith("~") ){
+                                        reverseCount += 1;
+                                    }
                                     if (predicateMap.ContainsKey(field.predicateName))
                                     {
                                         field.predicate = predicateMap[field.predicateName];
@@ -160,6 +177,16 @@ namespace RDR.Dgraph
                         }
 
 
+                    }
+                    if ((relationCount >0) && (reverseCount == relationCount))
+                    {
+                        typeElement.nature = NodeNature.Characteristic;
+                    } else if (scalarCount == 0) 
+                    {
+                        typeElement.nature = NodeNature.Association;
+                    } else
+                    {
+                        typeElement.nature = NodeNature.Thing;
                     }
                     typeElement.relationCount = relationCount;
                     NodeTypeMap.Add(name, typeElement);
@@ -196,6 +223,7 @@ namespace RDR.Dgraph
         public bool list { get; set; }
         public bool lang { get; set; }
         public bool index { get; set; }
+        public bool reverse { get; set; }
         public static Dictionary<string, Predicate> GetPredicateMap(string jsonString)
         {
             PredicateResponse resp = JsonSerializer.Deserialize<PredicateResponse>(jsonString);
